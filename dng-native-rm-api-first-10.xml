@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module>
+  <ModulePrefs
+      title="DNG - First 10 Requirements Native RM API"
+      description="Displays the first ten artifacts from the currently opened DOORS Next module using the native RM client extension API."
+      author="M365 Copilot"
+      scrolling="true"
+      height="520">
+    <Require feature="dynamic-height" />
+  </ModulePrefs>
+
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 12px; color: #17202a; background: #fff; }
+  h2 { margin: 0 0 6px 0; font-size: 16px; color: #111827; }
+  .sub { font-size: 12px; color: #4b5563; line-height: 1.35; margin-bottom: 8px; }
+  .status { margin: 8px 0 10px 0; padding: 8px 10px; border-radius: 4px; font-size: 12px; line-height: 1.4; background: #eef5ff; color: #1f4e79; border: 1px solid #bfd7ff; white-space: pre-wrap; }
+  .error { background: #fff1f1; color: #8a1f11; border: 1px solid #f5b8b3; }
+  .ok { background: #ecfdf3; color: #075e38; border: 1px solid #abefc6; }
+  button { background: #0f62fe; border: 1px solid #0f62fe; color: white; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin-right: 6px; }
+  button:hover { background: #0043ce; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 8px; }
+  th { background: #f2f4f8; color: #111827; font-size: 12px; font-weight: 700; text-align: left; padding: 7px; border: 1px solid #c8d0d9; }
+  td { font-size: 12px; vertical-align: top; padding: 7px; border: 1px solid #c8d0d9; overflow-wrap: anywhere; word-wrap: break-word; }
+  .num { width: 40px; text-align: right; color: #374151; }
+  .id { width: 92px; font-weight: 600; color: #1f2937; }
+  .title { font-weight: 700; color: #111827; margin-bottom: 4px; }
+  .text { color: #374151; line-height: 1.35; max-height: 8.2em; overflow: hidden; }
+  pre { white-space: pre-wrap; font-size: 11px; background: #f8fafc; border: 1px solid #d0d7de; padding: 8px; max-height: 180px; overflow: auto; }
+</style>
+<script type="text/javascript">
+(function () {
+  "use strict";
+  var currentArtifactRef = null;
+  var expectedModuleTitle = "580690CS - Annexe 5 Partie 10";
+  var maxItems = 10;
+
+  function $(id) { return document.getElementById(id); }
+  function adjustHeight() { try { gadgets.window.adjustHeight(); } catch (e) {} }
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>\"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+  function strip(v) { var d = document.createElement("div"); d.innerHTML = v || ""; return (d.textContent || d.innerText || "").replace(/\s+/g, " ").trim(); }
+  function log(msg) { var p = $("log"); p.textContent += msg + "\n"; adjustHeight(); }
+  function status(msg, kind) { var s = $("status"); s.className = "status" + (kind ? " " + kind : ""); s.textContent = msg; adjustHeight(); }
+
+  function getValue(obj, names) {
+    if (!obj) return "";
+    for (var i = 0; i < names.length; i++) {
+      var n = names[i];
+      try {
+        if (obj[n] != null && typeof obj[n] !== "function") return obj[n];
+        if (typeof obj[n] === "function") {
+          var v = obj[n]();
+          if (v != null) return v;
+        }
+      } catch (e) {}
+    }
+    return "";
+  }
+
+  function normalizeRow(item, index) {
+    var artifact = item && (item.artifact || item.ref || item.artifactRef || item);
+    var attrs = item && (item.attributes || item.values || item.attributeValues || item);
+    var id = getValue(attrs, ["Identifier", "identifier", "id", "ID"]);
+    var title = getValue(attrs, ["Title", "title", "Name", "name"]);
+    var text = getValue(attrs, ["Primary Text", "primaryText", "description", "Description", "text"]);
+    if (!id) id = getValue(artifact, ["identifier", "id", "getIdentifier"]);
+    if (!title) title = getValue(artifact, ["title", "name", "label", "getTitle", "getName"]);
+    if (!text) text = getValue(artifact, ["primaryText", "description", "text"]);
+    return { n: index + 1, id: id || "-", title: title || "Sans titre", text: strip(text || "") };
+  }
+
+  function render(items) {
+    var rows = $("rows");
+    rows.innerHTML = "";
+    items.slice(0, maxItems).forEach(function(item, i) {
+      var r = normalizeRow(item, i);
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td class='num'>" + r.n + "</td>" +
+                     "<td class='id'>" + esc(r.id) + "</td>" +
+                     "<td><div class='title'>" + esc(r.title) + "</div><div class='text'>" + esc(r.text) + "</div></td>";
+      rows.appendChild(tr);
+    });
+    $("table").style.display = items.length ? "table" : "none";
+    adjustHeight();
+  }
+
+  function callGetContentsAttributes(moduleRef) {
+    return new Promise(function(resolve, reject) {
+      if (!window.RM || !RM.Data || !RM.Data.getContentsAttributes) {
+        reject(new Error("RM.Data.getContentsAttributes n'est pas disponible dans ce contexte."));
+        return;
+      }
+      var done = false;
+      function cb(result) {
+        if (done) return;
+        done = true;
+        log("Callback RM.Data.getContentsAttributes recu.");
+        resolve(result || []);
+      }
+      try {
+        // Signature most often used by the RM client extension API: module ref + attribute list + callback.
+        RM.Data.getContentsAttributes(moduleRef, ["Identifier", "Title", "Primary Text"], cb);
+      } catch (e1) {
+        try {
+          // Fallback signature used/seen in some examples: module ref + callback.
+          RM.Data.getContentsAttributes(moduleRef, cb);
+        } catch (e2) {
+          try {
+            // Fallback for implementations that expect a parameter object.
+            RM.Data.getContentsAttributes({ artifact: moduleRef, attributes: ["Identifier", "Title", "Primary Text"] }, cb);
+          } catch (e3) {
+            reject(new Error("Impossible d'appeler RM.Data.getContentsAttributes. " + e1.message + " / " + e2.message + " / " + e3.message));
+          }
+        }
+      }
+      window.setTimeout(function() {
+        if (!done) reject(new Error("Timeout: aucune reponse de RM.Data.getContentsAttributes apres 30 secondes."));
+      }, 30000);
+    });
+  }
+
+  function loadFromCurrentModule() {
+    if (!currentArtifactRef) {
+      status("Ouvre le module '" + expectedModuleTitle + "' dans DOORS Next, puis clique sur Rafraichir.", "error");
+      return;
+    }
+    status("Lecture du contenu du module avec l'API native RM.Data.getContentsAttributes...", "");
+    log("ArtifactRef courant: " + JSON.stringify(currentArtifactRef, function(k, v){ return typeof v === "function" ? "[function]" : v; }).substring(0, 1000));
+    callGetContentsAttributes(currentArtifactRef).then(function(result) {
+      var items = [];
+      if (Array.isArray(result)) items = result;
+      else if (result && Array.isArray(result.data)) items = result.data;
+      else if (result && Array.isArray(result.items)) items = result.items;
+      else if (result && Array.isArray(result.artifacts)) items = result.artifacts;
+      else if (result) items = [result];
+      render(items);
+      status("Affichage des " + Math.min(items.length, maxItems) + " premiere(s) exigence(s).", "ok");
+    }).catch(function(err) {
+      status("Erreur: " + err.message + "\n\nCe widget utilise l'API native RM et ne tente plus d'ouvrir login.microsoftonline.com dans une iframe.", "error");
+    });
+  }
+
+  function subscribeToOpenedArtifact() {
+    if (!window.RM || !RM.Event || !RM.Event.subscribe) {
+      status("L'API RM.Event n'est pas disponible. Ajoute ce widget dans la mini-dashboard de DOORS Next, puis ouvre le module.", "error");
+      log("RM disponible: " + !!window.RM);
+      return;
+    }
+    var eventName = RM.Event.ARTIFACT_OPENED || "ARTIFACT_OPENED";
+    try {
+      RM.Event.subscribe(eventName, function(ref) {
+        currentArtifactRef = ref;
+        status("Module/artefact ouvert detecte. Clique sur Rafraichir pour lire les 10 premieres exigences.", "ok");
+        log("Evenement recu: " + eventName);
+      });
+      status("Widget pret. Ouvre le module '" + expectedModuleTitle + "' dans DOORS Next, puis clique sur Rafraichir.", "ok");
+    } catch (e) {
+      status("Impossible de s'abonner a RM.Event.ARTIFACT_OPENED: " + e.message, "error");
+    }
+  }
+
+  window.reloadDngNativeWidget = loadFromCurrentModule;
+  window.onload = function() {
+    status("Initialisation du widget natif RM...", "");
+    subscribeToOpenedArtifact();
+    adjustHeight();
+  };
+}());
+</script>
+</head>
+<body>
+  <h2>10 premieres exigences du module</h2>
+  <div class="sub">Module cible: <strong>580690CS - Annexe 5 Partie 10</strong><br/>Projet: <strong>709046-Tramcite Contrat Systeme (Requirements)</strong></div>
+  <button onclick="reloadDngNativeWidget()">Rafraichir</button>
+  <div id="status" class="status">Initialisation...</div>
+  <table id="table" style="display:none">
+    <thead><tr><th class="num">#</th><th class="id">ID</th><th>Exigence</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="sub" style="margin-top:10px;">Journal de diagnostic:</div>
+  <pre id="log"></pre>
+</body>
+</html>
+  ]]></Content>
+</Module>
