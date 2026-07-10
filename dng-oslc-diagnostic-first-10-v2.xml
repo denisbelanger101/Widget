@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module>
+  <ModulePrefs title="DNG OSLC Diagnostics - First 10 Requirements" scrolling="true" height="650">
+    <Require feature="dynamic-height" />
+    <Require feature="setprefs" />
+  </ModulePrefs>
+
+  <UserPref name="moduleUrl" display_name="Module URL" datatype="string" default_value="https://atkinsrealis.clm.ibmcloud.com/rm/resources/MD__lBuQHyDEfGNOpnLr1I6dA?oslc_config.context=https://atkinsrealis.clm.ibmcloud.com/rm/cm/stream/_-szKBkrkEfGjQZaMomm1sg" />
+  <UserPref name="maxItems" display_name="Max requirements" datatype="string" default_value="10" />
+  <UserPref name="timeoutMs" display_name="Timeout ms" datatype="string" default_value="12000" />
+
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:12px;color:#17202a;background:#fff}h2{margin:0 0 6px 0;font-size:16px}.sub{font-size:12px;color:#4b5563;line-height:1.35;margin-bottom:8px;overflow-wrap:anywhere}.status{margin:8px 0 10px 0;padding:8px 10px;border-radius:4px;font-size:12px;line-height:1.4;background:#eef5ff;color:#1f4e79;border:1px solid #bfd7ff;white-space:pre-wrap}.error{background:#fff1f1;color:#8a1f11;border:1px solid #f5b8b3}.ok{background:#ecfdf3;color:#075e38;border:1px solid #abefc6}button{background:#0f62fe;border:1px solid #0f62fe;color:#fff;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin:0 6px 6px 0}button.secondary{background:#fff;color:#0f62fe}table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px}th{background:#f2f4f8;color:#111827;font-size:12px;font-weight:700;text-align:left;padding:7px;border:1px solid #c8d0d9}td{font-size:12px;vertical-align:top;padding:7px;border:1px solid #c8d0d9;overflow-wrap:anywhere}.num{width:40px;text-align:right}.id{width:95px;font-weight:600}.title{font-weight:700;margin-bottom:4px}.text{color:#374151;line-height:1.35;max-height:8.2em;overflow:hidden}pre{white-space:pre-wrap;font-size:11px;background:#f8fafc;border:1px solid #d0d7de;padding:8px;max-height:240px;overflow:auto}a{color:#0f62fe;text-decoration:none}a:hover{text-decoration:underline}
+</style>
+<script type="text/javascript">
+(function(){
+'use strict';
+var prefs, runId=0;
+function $(id){return document.getElementById(id)}
+function adj(){try{gadgets.window.adjustHeight()}catch(e){}}
+function esc(v){return String(v==null?'':v).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]})}
+function strip(v){var d=document.createElement('div');d.innerHTML=v||'';return(d.textContent||d.innerText||'').replace(/\s+/g,' ').trim()}
+function pref(n,f){try{return prefs.getString(n)||f||''}catch(e){return f||''}}
+function log(m){$('log').textContent+=new Date().toLocaleTimeString()+' - '+m+'\n';adj()}
+function setStatus(m,c){$('status').className='status'+(c?' '+c:'');$('status').textContent=m;adj()}
+function parseModuleUrl(raw){var r={moduleUri:raw,configUri:''};var q=raw.indexOf('?');if(q>=0){r.moduleUri=raw.substring(0,q);raw.substring(q+1).split('&').forEach(function(p){var a=p.split('=');if(decodeURIComponent(a[0])==='oslc_config.context')r.configUri=decodeURIComponent(a.slice(1).join('='));})}return r}
+function withConfig(u,cfg){if(!cfg||u.indexOf('oslc_config.context=')>=0)return u;return u+(u.indexOf('?')>=0?'&':'?')+'oslc_config.context='+encodeURIComponent(cfg)}
+function local(n){return n?(n.localName||String(n.nodeName).split(':').pop()):''}
+function attr(n,name){if(!n||!n.attributes)return'';for(var i=0;i<n.attributes.length;i++){if(local(n.attributes[i])===name)return n.attributes[i].value}return''}
+function firstText(root,names){var nodes=root.getElementsByTagName('*');for(var i=0;i<nodes.length;i++){var ln=local(nodes[i]);for(var j=0;j<names.length;j++){if(ln===names[j]){var t=nodes[i].textContent||'';if(t.trim())return t.trim()}}}return''}
+function parseXml(t){var x=new DOMParser().parseFromString(t,'application/xml');if(x.getElementsByTagName('parsererror').length)throw new Error('Invalid XML. First 500 chars: '+t.substring(0,500));return x}
+function collect(xml,moduleUri){var out=[];var nodes=xml.getElementsByTagName('*');for(var i=0;i<nodes.length;i++){var ln=local(nodes[i]);var u='';if(ln==='uses')u=attr(nodes[i],'resource');if(!u)u=attr(nodes[i],'about')||attr(nodes[i],'resource')||attr(nodes[i],'resourceURI')||attr(nodes[i],'uri')||attr(nodes[i],'url');if(u&&u.indexOf('/rm/resources/')>=0&&u!==moduleUri&&u.indexOf('/rm/resources/MD_')<0&&out.indexOf(u)<0)out.push(u)}return out}
+function makeRequest(url,accept,timeout,authMode){var myRun=runId;return new Promise(function(resolve,reject){var done=false;function finish(fn,arg){if(done||myRun!==runId)return;done=true;clearTimeout(timer);fn(arg)}var timer=setTimeout(function(){finish(reject,new Error('Timeout after '+timeout+' ms. No callback from gadgets.io.makeRequest. URL: '+url))},timeout);if(typeof gadgets==='undefined'||!gadgets.io){finish(reject,new Error('gadgets.io is not available'));return}var p={};p[gadgets.io.RequestParameters.METHOD]=gadgets.io.MethodType.GET;p[gadgets.io.RequestParameters.CONTENT_TYPE]=gadgets.io.ContentType.TEXT;p[gadgets.io.RequestParameters.HEADERS]={'Accept':accept||'application/rdf+xml, application/xml, text/xml, */*','OSLC-Core-Version':'2.0'};p[gadgets.io.RequestParameters.REFRESH_INTERVAL]=0;try{if(authMode==='NONE'&&gadgets.io.RequestParameters.AUTHORIZATION&&gadgets.io.AuthorizationType&&gadgets.io.AuthorizationType.NONE)p[gadgets.io.RequestParameters.AUTHORIZATION]=gadgets.io.AuthorizationType.NONE;}catch(e){}
+log('GET ['+authMode+'] '+url);try{gadgets.io.makeRequest(url,function(resp){var rc=resp.rc||resp.status||0;log('callback rc='+rc+' errors='+(resp.errors?resp.errors.join(' | '):''));if(resp.errors&&resp.errors.length){finish(reject,new Error(resp.errors.join('\n')));return}if(rc>=300){finish(reject,new Error('HTTP '+rc+' for '+url+' body='+String(resp.text||resp.data||'').substring(0,300)));return}finish(resolve,resp.text||resp.data||'')},p)}catch(e){finish(reject,e)}})}
+function buildUrls(parts){var base=parts.moduleUri.substring(0,parts.moduleUri.indexOf('/resources/'));return[{name:'direct module RDF',url:withConfig(parts.moduleUri,parts.configUri)},{name:'publish/modules',url:withConfig(base+'/publish/modules?resourceURI='+encodeURIComponent(parts.moduleUri),parts.configUri)}]}
+function render(items){var tb=$('rows');tb.innerHTML='';items.forEach(function(it){var tr=document.createElement('tr');tr.innerHTML='<td class="num">'+it.n+'</td><td class="id">'+esc(it.id||'-')+'</td><td><div class="title"><a target="_blank" href="'+esc(it.uri)+'">'+esc(it.title||'Sans titre')+'</a></div><div class="text">'+esc(strip(it.text||''))+'</div></td>';tb.appendChild(tr)});$('table').style.display=items.length?'table':'none';adj()}
+function readReq(uri,cfg,i,timeout){return makeRequest(withConfig(uri,cfg),'application/rdf+xml, application/xml, text/xml, */*',timeout,'NONE').then(function(t){var x=parseXml(t);return{n:i+1,uri:withConfig(uri,cfg),id:firstText(x,['identifier','ID','id']),title:firstText(x,['title','name','label']),text:firstText(x,['primaryText','description','text','content'])}}).catch(function(e){return{n:i+1,uri:withConfig(uri,cfg),id:'-',title:'Unable to read requirement',text:e.message}})}
+function load(){prefs=new gadgets.Prefs();runId++;$('log').textContent='';$('rows').innerHTML='';$('table').style.display='none';var raw=pref('moduleUrl','');var parts=parseModuleUrl(raw);var max=parseInt(pref('maxItems','10'),10)||10;var timeout=parseInt(pref('timeoutMs','12000'),10)||12000;$('moduleUri').textContent=parts.moduleUri;$('configUri').textContent=parts.configUri||'Not specified';log('gadgets.io available: '+(typeof gadgets!=='undefined'&&!!gadgets.io));log('Authorization NONE is used to avoid OAuth popup/redirect hang.');setStatus('Testing OSLC endpoints sequentially...','');var urls=buildUrls(parts);var chain=Promise.resolve([]);urls.forEach(function(u){chain=chain.then(function(links){if(links.length)return links;setStatus('Trying '+u.name+' ...','');return makeRequest(u.url,'application/rdf+xml, application/xml, text/xml, */*',timeout,'NONE').then(function(t){log('response first 300 chars: '+t.substring(0,300).replace(/\s+/g,' '));var x=parseXml(t);var found=collect(x,parts.moduleUri);log('found links='+found.length);return found}).catch(function(e){log('failed '+u.name+': '+e.message);return[]})})});chain.then(function(links){if(!links.length)throw new Error('No artifact links found from direct RDF or publish/modules.');links=links.slice(0,max);setStatus('Found '+links.length+' link(s). Loading requirement details...','');return Promise.all(links.map(function(u,i){return readReq(u,parts.configUri,i,timeout)}))}).then(function(items){render(items);setStatus('Done. Displaying '+items.length+' requirement(s).','ok')}).catch(function(e){setStatus('OSLC loading failed.\n\n'+e.message+'\n\nIf all calls time out with no callback, Jazz OpenSocial is not completing server-side requests to RM. In that case the fix is server-side: allowlist/OAuth/proxy configuration, or host a small service under the same RM/JTS domain.','error')})}
+function openUrls(){prefs=new gadgets.Prefs();var p=parseModuleUrl(pref('moduleUrl',''));buildUrls(p).forEach(function(u){window.open(u.url,'_blank')})}
+window.dngReload=load;window.openTestUrls=openUrls;window.onload=load;
+})();
+</script>
+</head>
+<body>
+<h2>DNG OSLC Diagnostic - First 10 Requirements</h2>
+<div class="sub"><strong>Module URI:</strong> <span id="moduleUri"></span></div>
+<div class="sub"><strong>Configuration:</strong> <span id="configUri"></span></div>
+<button onclick="dngReload()">Reload</button><button class="secondary" onclick="openTestUrls()">Open test URLs in browser</button>
+<div id="status" class="status">Initializing...</div>
+<table id="table" style="display:none"><thead><tr><th class="num">#</th><th class="id">ID</th><th>Requirement</th></tr></thead><tbody id="rows"></tbody></table>
+<div class="sub" style="margin-top:10px"><strong>Debug log</strong></div><pre id="log"></pre>
+</body>
+</html>
+  ]]></Content>
+</Module>
