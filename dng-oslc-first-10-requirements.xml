@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module>
+  <ModulePrefs
+      title="DNG OSLC - First 10 Requirements"
+      description="OpenSocial OSLC widget that displays the first ten requirements from a DOORS Next module without using the RM JavaScript API."
+      author="M365 Copilot"
+      scrolling="true"
+      height="620">
+    <Require feature="dynamic-height" />
+    <Require feature="setprefs" />
+  </ModulePrefs>
+
+  <UserPref name="moduleUrl" display_name="Module URL" datatype="string" default_value="https://atkinsrealis.clm.ibmcloud.com/rm/resources/MD__lBuQHyDEfGNOpnLr1I6dA?oslc_config.context=https://atkinsrealis.clm.ibmcloud.com/rm/cm/stream/_-szKBkrkEfGjQZaMomm1sg" />
+  <UserPref name="projectName" display_name="Project area" datatype="string" default_value="709046-Tramcite Contrat Systeme (Requirements)" />
+  <UserPref name="moduleTitle" display_name="Module title" datatype="string" default_value="580690CS - Annexe 5 Partie 10" />
+  <UserPref name="maxItems" display_name="Max requirements" datatype="string" default_value="10" />
+  <UserPref name="debug" display_name="Debug mode true/false" datatype="string" default_value="true" />
+
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 12px; color: #17202a; background: #fff; }
+  h2 { margin: 0 0 6px 0; font-size: 16px; color: #111827; }
+  .sub { font-size: 12px; color: #4b5563; line-height: 1.35; margin-bottom: 10px; overflow-wrap: anywhere; }
+  .buttons { margin: 8px 0 10px 0; }
+  button { background: #0f62fe; border: 1px solid #0f62fe; color: #fff; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin-right: 6px; }
+  button:hover { background: #0043ce; }
+  .status { margin: 8px 0 10px 0; padding: 8px 10px; border-radius: 4px; font-size: 12px; line-height: 1.4; background: #eef5ff; color: #1f4e79; border: 1px solid #bfd7ff; white-space: pre-wrap; }
+  .error { background: #fff1f1; color: #8a1f11; border: 1px solid #f5b8b3; }
+  .ok { background: #ecfdf3; color: #075e38; border: 1px solid #abefc6; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 8px; }
+  th { background: #f2f4f8; color: #111827; font-size: 12px; font-weight: 700; text-align: left; padding: 7px; border: 1px solid #c8d0d9; }
+  td { font-size: 12px; vertical-align: top; padding: 7px; border: 1px solid #c8d0d9; overflow-wrap: anywhere; word-wrap: break-word; }
+  .num { width: 40px; text-align: right; color: #374151; }
+  .id { width: 95px; font-weight: 600; color: #1f2937; }
+  .title { font-weight: 700; color: #111827; margin-bottom: 4px; }
+  .text { color: #374151; line-height: 1.35; max-height: 8.2em; overflow: hidden; }
+  a { color: #0f62fe; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  pre { white-space: pre-wrap; font-size: 11px; background: #f8fafc; border: 1px solid #d0d7de; padding: 8px; max-height: 220px; overflow: auto; }
+</style>
+<script type="text/javascript">
+(function () {
+  "use strict";
+  var prefs;
+  var DEFAULT_TIMEOUT_MS = 30000;
+
+  function $(id) { return document.getElementById(id); }
+  function adjustHeight() { try { gadgets.window.adjustHeight(); } catch (e) {} }
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>\"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+  function stripHtml(v) { var d = document.createElement("div"); d.innerHTML = v || ""; return (d.textContent || d.innerText || "").replace(/\s+/g, " ").trim(); }
+  function pref(name, fallback) { try { var v = prefs.getString(name); return v || fallback || ""; } catch(e) { return fallback || ""; } }
+  function debugOn() { return String(pref("debug", "true")).toLowerCase() === "true"; }
+  function log(msg) { if (!debugOn()) return; var p = $("log"); p.textContent += new Date().toLocaleTimeString() + " - " + msg + "\n"; adjustHeight(); }
+  function status(msg, cls) { var s = $("status"); s.className = "status" + (cls ? " " + cls : ""); s.textContent = msg; adjustHeight(); }
+
+  function parseModuleUrl(raw) {
+    var result = { moduleUri: raw, configUri: "" };
+    var q = raw.indexOf("?");
+    if (q >= 0) {
+      result.moduleUri = raw.substring(0, q);
+      var params = raw.substring(q + 1).split("&");
+      for (var i = 0; i < params.length; i++) {
+        var pair = params[i].split("=");
+        if (decodeURIComponent(pair[0]) === "oslc_config.context") {
+          result.configUri = decodeURIComponent(pair.slice(1).join("="));
+        }
+      }
+    }
+    return result;
+  }
+
+  function withConfig(url, configUri) {
+    if (!configUri) return url;
+    if (url.indexOf("oslc_config.context=") >= 0) return url;
+    return url + (url.indexOf("?") >= 0 ? "&" : "?") + "oslc_config.context=" + encodeURIComponent(configUri);
+  }
+
+  function absoluteUrl(url) {
+    if (/^https?:\/\//i.test(url)) return url;
+    var base = window.location.protocol + "//" + window.location.host;
+    return base + (url.charAt(0) === "/" ? url : "/" + url);
+  }
+
+  function requestText(url, accept) {
+    url = absoluteUrl(url);
+    accept = accept || "application/rdf+xml, application/xml, text/xml, */*";
+    log("GET " + url);
+    return new Promise(function(resolve, reject) {
+      var done = false;
+      var timer = window.setTimeout(function() {
+        if (done) return;
+        done = true;
+        reject(new Error("Timeout after " + DEFAULT_TIMEOUT_MS + " ms: " + url));
+      }, DEFAULT_TIMEOUT_MS);
+
+      function finishOk(text, meta) {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        log("OK " + (meta || "") + " length=" + (text ? text.length : 0));
+        resolve(text || "");
+      }
+      function finishErr(err) {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        reject(err);
+      }
+
+      // Preferred in OpenSocial containers.
+      if (typeof gadgets !== "undefined" && gadgets.io && gadgets.io.makeRequest) {
+        var params = {};
+        params[gadgets.io.RequestParameters.METHOD] = gadgets.io.MethodType.GET;
+        params[gadgets.io.RequestParameters.CONTENT_TYPE] = gadgets.io.ContentType.TEXT;
+        params[gadgets.io.RequestParameters.HEADERS] = {
+          "Accept": accept,
+          "OSLC-Core-Version": "2.0"
+        };
+        try {
+          if (gadgets.io.RequestParameters.AUTHORIZATION && gadgets.io.AuthorizationType && gadgets.io.AuthorizationType.SIGNED) {
+            params[gadgets.io.RequestParameters.AUTHORIZATION] = gadgets.io.AuthorizationType.SIGNED;
+          }
+        } catch(e) {}
+        try {
+          gadgets.io.makeRequest(url, function(response) {
+            if (done) return;
+            var rc = response.rc || response.status || 0;
+            log("gadgets.io response rc=" + rc + " errors=" + (response.errors ? response.errors.join(" | ") : ""));
+            if (response.errors && response.errors.length) { finishErr(new Error(response.errors.join("\n"))); return; }
+            if (rc >= 300) { finishErr(new Error("HTTP " + rc + " for " + url)); return; }
+            finishOk(response.text || response.data || "", "gadgets.io rc=" + rc);
+          }, params);
+        } catch (e) {
+          finishErr(e);
+        }
+        return;
+      }
+
+      // Fallback only if the container allows same-origin XHR.
+      try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, true);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("Accept", accept);
+        xhr.setRequestHeader("OSLC-Core-Version", "2.0");
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState === 4) {
+            if (xhr.status >= 200 && xhr.status < 300) finishOk(xhr.responseText, "xhr status=" + xhr.status);
+            else finishErr(new Error("HTTP " + xhr.status + " " + xhr.statusText + " for " + url));
+          }
+        };
+        xhr.onerror = function() { finishErr(new Error("XHR network error for " + url)); };
+        xhr.send();
+      } catch (ex) {
+        finishErr(ex);
+      }
+    });
+  }
+
+  function parseXml(text) {
+    var xml = new DOMParser().parseFromString(text, "application/xml");
+    if (xml.getElementsByTagName("parsererror").length > 0) throw new Error("Invalid XML response");
+    return xml;
+  }
+  function localName(node) { return node ? (node.localName || String(node.nodeName).split(":").pop()) : ""; }
+  function attr(node, name) { if (!node || !node.attributes) return ""; for (var i=0;i<node.attributes.length;i++) { if (localName(node.attributes[i]) === name) return node.attributes[i].value; } return ""; }
+  function firstText(root, names) {
+    var nodes = root.getElementsByTagName("*");
+    for (var i=0;i<nodes.length;i++) {
+      var ln = localName(nodes[i]);
+      for (var j=0;j<names.length;j++) {
+        if (ln === names[j]) { var t = nodes[i].textContent || ""; if (t.trim()) return t.trim(); }
+      }
+    }
+    return "";
+  }
+
+  function collectUsedArtifacts(xml, moduleUri) {
+    var uris = [];
+    var nodes = xml.getElementsByTagName("*");
+    for (var i=0;i<nodes.length;i++) {
+      var ln = localName(nodes[i]);
+      var u = "";
+      if (ln === "uses") u = attr(nodes[i], "resource");
+      if (!u && (ln === "Requirement" || ln === "RequirementCollection" || ln === "resource" || ln === "Description")) u = attr(nodes[i], "about") || attr(nodes[i], "resource");
+      if (!u) u = attr(nodes[i], "resourceURI") || attr(nodes[i], "uri") || attr(nodes[i], "url");
+      if (u && u.indexOf("/rm/resources/") >= 0 && u !== moduleUri && uris.indexOf(u) < 0 && u.indexOf("/rm/resources/MD_") < 0) uris.push(u);
+    }
+    return uris;
+  }
+
+  function buildOslcQueryUrl(moduleUri, configUri) {
+    var base = moduleUri.substring(0, moduleUri.indexOf("/resources/"));
+    var title = pref("moduleTitle", "");
+    var prefix = "dcterms=<http://purl.org/dc/terms/>,oslc_rm=<http://open-services.net/ns/rm#>";
+    var select = "dcterms:identifier,dcterms:title,oslc_rm:uses{dcterms:identifier,dcterms:title}";
+    var where = "dcterms:title=\"" + title.replace(/\\/g,"\\\\").replace(/\"/g,"\\\"") + "\"";
+    var url = base + "/views?oslc.query=true" +
+      "&oslc.prefix=" + encodeURIComponent(prefix) +
+      "&oslc.select=" + encodeURIComponent(select) +
+      "&oslc.where=" + encodeURIComponent(where);
+    return withConfig(url, configUri);
+  }
+
+  function buildPublishModuleUrl(moduleUri, configUri) {
+    var base = moduleUri.substring(0, moduleUri.indexOf("/resources/"));
+    return withConfig(base + "/publish/modules?resourceURI=" + encodeURIComponent(moduleUri), configUri);
+  }
+
+  function readRequirement(uri, configUri, index) {
+    var url = withConfig(uri, configUri);
+    return requestText(url, "application/rdf+xml, application/xml, text/xml, */*")
+      .then(function(text) {
+        var xml = parseXml(text);
+        return {
+          n: index + 1,
+          uri: url,
+          id: firstText(xml, ["identifier", "ID", "id"]),
+          title: firstText(xml, ["title", "name", "label"]),
+          text: firstText(xml, ["primaryText", "description", "text", "content"])
+        };
+      })
+      .catch(function(e) {
+        return { n: index + 1, uri: url, id: "-", title: "Unable to read requirement", text: e.message };
+      });
+  }
+
+  function render(items) {
+    var tbody = $("rows");
+    tbody.innerHTML = "";
+    items.forEach(function(it) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td class='num'>" + it.n + "</td>" +
+        "<td class='id'>" + esc(it.id || "-") + "</td>" +
+        "<td><div class='title'><a target='_blank' rel='noopener noreferrer' href='" + esc(it.uri) + "'>" + esc(it.title || "Sans titre") + "</a></div>" +
+        "<div class='text'>" + esc(stripHtml(it.text || "")) + "</div></td>";
+      tbody.appendChild(tr);
+    });
+    $("table").style.display = items.length ? "table" : "none";
+    adjustHeight();
+  }
+
+  function discoverLinks(parts) {
+    var attempts = [
+      { name: "OSLC direct module RDF", url: withConfig(parts.moduleUri, parts.configUri) },
+      { name: "Reportable REST module", url: buildPublishModuleUrl(parts.moduleUri, parts.configUri) },
+      { name: "OSLC query by module title", url: buildOslcQueryUrl(parts.moduleUri, parts.configUri) }
+    ];
+    var lastError = null;
+    var chain = Promise.resolve([]);
+    attempts.forEach(function(a) {
+      chain = chain.then(function(links) {
+        if (links && links.length) return links;
+        status("Trying: " + a.name, "");
+        log("Strategy: " + a.name);
+        return requestText(a.url).then(function(text) {
+          var xml = parseXml(text);
+          var found = collectUsedArtifacts(xml, parts.moduleUri);
+          log("Found " + found.length + " artifact URI(s) with " + a.name);
+          return found;
+        }).catch(function(e) {
+          lastError = e;
+          log("Failed " + a.name + ": " + e.message);
+          return [];
+        });
+      });
+    });
+    return chain.then(function(links) {
+      if (!links || !links.length) throw new Error("No requirement links found. Last error: " + (lastError ? lastError.message : "none"));
+      return links;
+    });
+  }
+
+  function load() {
+    prefs = new gadgets.Prefs();
+    $("log").textContent = "";
+    $("table").style.display = "none";
+    $("rows").innerHTML = "";
+    var raw = pref("moduleUrl", "");
+    var max = parseInt(pref("maxItems", "10"), 10);
+    if (!max || max < 1) max = 10;
+    if (max > 50) max = 50;
+    var parts = parseModuleUrl(raw);
+    $("project").textContent = pref("projectName", "");
+    $("module").textContent = pref("moduleTitle", "");
+    $("moduleUri").textContent = parts.moduleUri;
+    $("configUri").textContent = parts.configUri || "Not specified";
+
+    if (!raw) { status("Module URL is not configured.", "error"); return; }
+    if (typeof gadgets === "undefined" || !gadgets.io) log("gadgets.io is not available; XHR fallback will be used.");
+    else log("gadgets.io is available.");
+
+    status("Loading module through OSLC/OpenSocial...", "");
+    discoverLinks(parts)
+      .then(function(links) {
+        links = links.slice(0, max);
+        status("Found " + links.length + " requirement link(s). Loading details...", "");
+        return Promise.all(links.map(function(u, i) { return readRequirement(u, parts.configUri, i); }));
+      })
+      .then(function(items) {
+        render(items);
+        status("Done. Displaying " + items.length + " requirement(s).", "ok");
+      })
+      .catch(function(e) {
+        render([]);
+        status("OSLC loading failed.\n\n" + e.message + "\n\nLikely causes:\n1. The OpenSocial container is not passing authentication to OSLC.\n2. The widget host is not allowed by JTS/RM allowlist.\n3. The module or stream is not accessible to the current user.\n4. IBM Cloud OIDC redirected the request to login, which widgets cannot frame.", "error");
+      });
+  }
+
+  window.onload = load;
+  window.dngOslcReload = load;
+}());
+</script>
+</head>
+<body>
+  <h2>DNG OSLC - 10 first requirements</h2>
+  <div class="sub"><strong>Project area:</strong> <span id="project"></span></div>
+  <div class="sub"><strong>Module:</strong> <span id="module"></span></div>
+  <div class="sub"><strong>Module URI:</strong> <span id="moduleUri"></span></div>
+  <div class="sub"><strong>Configuration:</strong> <span id="configUri"></span></div>
+  <div class="buttons"><button onclick="dngOslcReload()">Reload</button></div>
+  <div id="status" class="status">Initializing...</div>
+  <table id="table" style="display:none">
+    <thead><tr><th class="num">#</th><th class="id">ID</th><th>Requirement</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="sub" style="margin-top:10px;"><strong>Debug log</strong></div>
+  <pre id="log"></pre>
+</body>
+</html>
+  ]]></Content>
+</Module>
