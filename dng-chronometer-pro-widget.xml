@@ -1,0 +1,500 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module specificationVersion="2.0">
+  <ModulePrefs title="DOORS Next Chronometer Pro" height="780" scrolling="true" author="Denis Belanger / M365 Copilot" description="Chronometer widget for IBM Engineering Requirements Management DOORS Next 7.0.3. Includes stopwatch, countdown, laps, daily totals, session history, export/import and keyboard shortcuts.">
+    <Require feature="dynamic-height"/>
+    <Require feature="setprefs"/>
+  </ModulePrefs>
+
+  <UserPref name="accentColor" display_name="Accent color" default_value="#0f62fe" datatype="string"/>
+  <UserPref name="defaultMode" display_name="Default mode: stopwatch, countdown, pomodoro" default_value="stopwatch" datatype="string"/>
+  <UserPref name="defaultCountdownMinutes" display_name="Default countdown minutes" default_value="25" datatype="string"/>
+  <UserPref name="enableSound" display_name="Enable sound" default_value="true" datatype="string"/>
+
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>DOORS Next Chronometer Pro</title>
+<style>
+  :root {
+    --accent: #0f62fe;
+    --accent-dark: #0043ce;
+    --bg: #f4f4f4;
+    --card: #ffffff;
+    --text: #161616;
+    --muted: #525252;
+    --border: #dcdcdc;
+    --ok: #24a148;
+    --warn: #f1c21b;
+    --danger: #da1e28;
+    --shadow: 0 4px 14px rgba(0,0,0,0.12);
+  }
+  body {
+    margin: 0;
+    padding: 12px;
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .title { font-size: 20px; font-weight: 700; }
+  .subtitle { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .pill {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 14px;
+  }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    font-size: 54px;
+    line-height: 1;
+    font-weight: 800;
+    text-align: center;
+    margin: 18px 0 6px;
+  }
+  .timer.small { font-size: 34px; }
+  .status { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  button, select, input, textarea {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+  }
+  button {
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 11px;
+    background: #e0e0e0;
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 700;
+  }
+  button:hover { filter: brightness(0.96); }
+  button.primary { background: var(--accent); color: white; }
+  button.primary:hover { background: var(--accent-dark); }
+  button.ok { background: var(--ok); color: white; }
+  button.warn { background: var(--warn); color: #161616; }
+  button.danger { background: var(--danger); color: white; }
+  button.ghost { background: transparent; border: 1px solid var(--border); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  input, select, textarea {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    background: white;
+    color: var(--text);
+  }
+  input[type="number"] { width: 74px; }
+  input[type="text"] { min-width: 180px; flex: 1; }
+  label { font-size: 12px; color: var(--muted); font-weight: 700; }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 110px; flex: 1; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+  .stat { background: #f9f9f9; border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  .stat .k { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .stat .v { font-size: 18px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tab { background: #f4f4f4; border: 1px solid var(--border); }
+  .tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border-bottom: 1px solid var(--border); padding: 7px 5px; text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  .scroll { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 10px; }
+  .progress { height: 10px; background: #e0e0e0; border-radius: 999px; overflow: hidden; margin-top: 8px; }
+  .bar { height: 100%; width: 0%; background: var(--accent); transition: width .2s linear; }
+  .note { color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .hidden { display: none; }
+  .dark {
+    --bg: #161616; --card: #262626; --text: #f4f4f4; --muted: #c6c6c6; --border: #525252;
+    --shadow: 0 4px 14px rgba(0,0,0,0.35);
+  }
+  .dark input, .dark select, .dark textarea { background: #393939; color: #f4f4f4; border-color: #525252; }
+  .dark .stat { background: #393939; }
+  .dark button { background: #393939; color: #f4f4f4; }
+  .dark button.primary { background: var(--accent); }
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: 1fr; }
+    .timer { font-size: 42px; }
+    .stats { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="header">
+    <div>
+      <div class="title">DOORS Next Chronometer Pro</div>
+      <div class="subtitle">Stopwatch, countdown, Pomodoro, laps, daily total and exports</div>
+    </div>
+    <div class="pill" id="todayLabel"></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="tabs">
+        <button class="tab" id="tabStopwatch" onclick="setMode('stopwatch')">Stopwatch</button>
+        <button class="tab" id="tabCountdown" onclick="setMode('countdown')">Countdown</button>
+        <button class="tab" id="tabPomodoro" onclick="setMode('pomodoro')">Pomodoro</button>
+      </div>
+
+      <div id="timeDisplay" class="timer">00:00:00.0</div>
+      <div id="status" class="status">Ready</div>
+      <div class="progress"><div class="bar" id="progressBar"></div></div>
+
+      <div class="row" style="justify-content:center; margin-top:14px;">
+        <button class="primary" id="startBtn" onclick="startTimer()">Start</button>
+        <button class="warn" id="pauseBtn" onclick="pauseTimer()" disabled>Pause</button>
+        <button class="ok" id="resumeBtn" onclick="resumeTimer()" disabled>Resume</button>
+        <button class="ghost" onclick="addLap()">Lap / Split</button>
+        <button class="danger" onclick="resetTimer()">Reset</button>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div class="field">
+          <label for="taskName">Task / Activity</label>
+          <input id="taskName" type="text" placeholder="Example: Review module, update attributes" />
+        </div>
+        <div class="field">
+          <label for="artifactRef">Artifact / Module</label>
+          <input id="artifactRef" type="text" placeholder="Optional reference" />
+        </div>
+      </div>
+
+      <div id="countdownSettings" class="row hidden" style="margin-top:12px;">
+        <div class="field">
+          <label>Hours</label>
+          <input id="cdHours" type="number" min="0" value="0" />
+        </div>
+        <div class="field">
+          <label>Minutes</label>
+          <input id="cdMinutes" type="number" min="0" value="25" />
+        </div>
+        <div class="field">
+          <label>Seconds</label>
+          <input id="cdSeconds" type="number" min="0" max="59" value="0" />
+        </div>
+        <button onclick="applyCountdown()">Apply</button>
+      </div>
+
+      <div id="pomodoroSettings" class="row hidden" style="margin-top:12px;">
+        <button onclick="setPomodoroPreset(25,5)">25 / 5</button>
+        <button onclick="setPomodoroPreset(50,10)">50 / 10</button>
+        <button onclick="setPomodoroPreset(90,15)">90 / 15</button>
+        <button onclick="togglePomodoroPhase()">Switch Work / Break</button>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">Current session</div><div class="v" id="currentStat">00:00:00</div></div>
+        <div class="stat"><div class="k">Today total</div><div class="v" id="todayStat">00:00:00</div></div>
+        <div class="stat"><div class="k">Sessions today</div><div class="v" id="sessionsStat">0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <strong>Controls and options</strong>
+        <button class="ghost" onclick="toggleTheme()">Dark / Light</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label>Accent color</label>
+          <input id="accentColor" type="color" value="#0f62fe" onchange="setAccent(this.value)" />
+        </div>
+        <div class="field">
+          <label>Alert sound</label>
+          <select id="soundToggle"><option value="true">Enabled</option><option value="false">Disabled</option></select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button onclick="saveSession()">Save session</button>
+        <button onclick="copySummary()">Copy summary</button>
+        <button onclick="exportCsv()">Export CSV</button>
+        <button onclick="exportJson()">Export JSON</button>
+        <button class="danger" onclick="clearToday()">Clear today</button>
+      </div>
+      <p class="note"><b>Shortcuts:</b> Space = start/pause/resume, L = lap, R = reset, S = save session. Data is stored in your browser local storage.</p>
+      <textarea id="clipboardBox" rows="4" style="width:100%; box-sizing:border-box;" placeholder="Summary/csv/json will appear here for copying if browser download is blocked."></textarea>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:12px;">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;"><strong>Laps / splits</strong><button class="ghost" onclick="clearLaps()">Clear laps</button></div>
+      <div class="scroll" style="margin-top:8px;">
+        <table><thead><tr><th>#</th><th>Time</th><th>Delta</th><th>Timestamp</th></tr></thead><tbody id="lapsBody"></tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;"><strong>Session history - today</strong><button class="ghost" onclick="refreshHistory()">Refresh</button></div>
+      <div class="scroll" style="margin-top:8px;">
+        <table><thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Task</th></tr></thead><tbody id="historyBody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function initPrefs(){
+  try {
+    var prefs = new gadgets.Prefs();
+    var color = prefs.getString('accentColor') || '#0f62fe';
+    var minutes = parseInt(prefs.getString('defaultCountdownMinutes') || '25', 10);
+    var sound = prefs.getString('enableSound') || 'true';
+    document.documentElement.style.setProperty('--accent', color);
+    document.getElementById('accentColor').value = color;
+    document.getElementById('cdMinutes').value = isNaN(minutes) ? 25 : minutes;
+    document.getElementById('soundToggle').value = sound;
+    window.__preferredMode = prefs.getString('defaultMode') || 'stopwatch';
+  } catch(e) { window.__preferredMode = 'stopwatch'; }
+})();
+
+var mode = 'stopwatch';
+var running = false;
+var startEpoch = null;
+var elapsedBefore = 0;
+var timerHandle = null;
+var sessionStartedAt = null;
+var laps = [];
+var countdownInitial = 25 * 60 * 1000;
+var countdownRemainingAtStart = countdownInitial;
+var pomodoroWork = 25 * 60 * 1000;
+var pomodoroBreak = 5 * 60 * 1000;
+var pomodoroPhase = 'work';
+var storageKeyPrefix = 'dngChronometerPro:';
+
+function pad(n, w) { n = String(n); while(n.length < w) n = '0' + n; return n; }
+function todayKey() { return new Date().toISOString().slice(0,10); }
+function nowTime() { return new Date().toLocaleTimeString(); }
+function format(ms, tenths) {
+  ms = Math.max(0, Math.floor(ms));
+  var h = Math.floor(ms / 3600000);
+  var m = Math.floor((ms % 3600000) / 60000);
+  var s = Math.floor((ms % 60000) / 1000);
+  var t = Math.floor((ms % 1000) / 100);
+  return pad(h,2) + ':' + pad(m,2) + ':' + pad(s,2) + (tenths ? '.' + t : '');
+}
+function currentElapsed() {
+  if(!running) return elapsedBefore;
+  if(mode === 'countdown' || mode === 'pomodoro') return Math.max(0, countdownRemainingAtStart - (Date.now() - startEpoch));
+  return elapsedBefore + (Date.now() - startEpoch);
+}
+function sessionElapsedForStats() {
+  if(mode === 'countdown' || mode === 'pomodoro') {
+    var initial = (mode === 'pomodoro') ? (pomodoroPhase === 'work' ? pomodoroWork : pomodoroBreak) : countdownInitial;
+    return initial - currentElapsed();
+  }
+  return currentElapsed();
+}
+function getSessions() {
+  try { return JSON.parse(localStorage.getItem(storageKeyPrefix + todayKey()) || '[]'); } catch(e) { return []; }
+}
+function setSessions(s) { localStorage.setItem(storageKeyPrefix + todayKey(), JSON.stringify(s)); }
+function todayTotal() { return getSessions().reduce(function(a, s){ return a + (s.durationMs || 0); }, 0); }
+function updateDisplay() {
+  var value = currentElapsed();
+  document.getElementById('timeDisplay').textContent = format(value, true);
+  document.getElementById('currentStat').textContent = format(sessionElapsedForStats(), false);
+  var live = running ? sessionElapsedForStats() : 0;
+  document.getElementById('todayStat').textContent = format(todayTotal() + live, false);
+  var sessions = getSessions();
+  document.getElementById('sessionsStat').textContent = sessions.length;
+  document.getElementById('todayLabel').textContent = 'Today: ' + todayKey();
+  var pct = 0;
+  if(mode === 'countdown') pct = 100 * (1 - value / countdownInitial);
+  if(mode === 'pomodoro') {
+    var pi = pomodoroPhase === 'work' ? pomodoroWork : pomodoroBreak;
+    pct = 100 * (1 - value / pi);
+  }
+  document.getElementById('progressBar').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  if(running && (mode === 'countdown' || mode === 'pomodoro') && value <= 0) finishCountdown();
+  try { gadgets.window.adjustHeight(); } catch(e) {}
+}
+function setStatus(text) { document.getElementById('status').textContent = text; }
+function setMode(next) {
+  if(running) pauseTimer();
+  mode = next;
+  elapsedBefore = 0;
+  laps = [];
+  countdownRemainingAtStart = countdownInitial;
+  ['Stopwatch','Countdown','Pomodoro'].forEach(function(x){ document.getElementById('tab'+x).className = 'tab'; });
+  document.getElementById('tab' + cap(next)).className = 'tab active';
+  document.getElementById('countdownSettings').className = next === 'countdown' ? 'row' : 'row hidden';
+  document.getElementById('pomodoroSettings').className = next === 'pomodoro' ? 'row' : 'row hidden';
+  if(next === 'stopwatch') setStatus('Ready - stopwatch mode');
+  if(next === 'countdown') { applyCountdown(); setStatus('Ready - countdown mode'); }
+  if(next === 'pomodoro') { countdownRemainingAtStart = pomodoroWork; setStatus('Ready - Pomodoro work phase'); }
+  refreshLaps(); updateButtons(); updateDisplay();
+}
+function cap(x) { return x.charAt(0).toUpperCase() + x.slice(1); }
+function startTimer() {
+  if(running) return;
+  running = true;
+  startEpoch = Date.now();
+  sessionStartedAt = sessionStartedAt || new Date().toISOString();
+  if(mode === 'countdown') countdownRemainingAtStart = elapsedBefore || countdownInitial;
+  if(mode === 'pomodoro') countdownRemainingAtStart = elapsedBefore || (pomodoroPhase === 'work' ? pomodoroWork : pomodoroBreak);
+  setStatus('Running - ' + mode + (mode === 'pomodoro' ? ' / ' + pomodoroPhase : ''));
+  timerHandle = setInterval(updateDisplay, 100);
+  updateButtons(); updateDisplay();
+}
+function pauseTimer() {
+  if(!running) return;
+  elapsedBefore = currentElapsed();
+  running = false;
+  clearInterval(timerHandle);
+  setStatus('Paused');
+  updateButtons(); updateDisplay();
+}
+function resumeTimer() { if(!running) startTimer(); }
+function resetTimer() {
+  running = false; clearInterval(timerHandle);
+  startEpoch = null; elapsedBefore = 0; sessionStartedAt = null; laps = [];
+  if(mode === 'countdown') countdownRemainingAtStart = countdownInitial;
+  if(mode === 'pomodoro') countdownRemainingAtStart = pomodoroPhase === 'work' ? pomodoroWork : pomodoroBreak;
+  setStatus('Reset'); refreshLaps(); updateButtons(); updateDisplay();
+}
+function updateButtons() {
+  document.getElementById('startBtn').disabled = running;
+  document.getElementById('pauseBtn').disabled = !running;
+  document.getElementById('resumeBtn').disabled = running || (!elapsedBefore && !sessionStartedAt);
+}
+function applyCountdown() {
+  var h = parseInt(document.getElementById('cdHours').value || '0', 10);
+  var m = parseInt(document.getElementById('cdMinutes').value || '0', 10);
+  var s = parseInt(document.getElementById('cdSeconds').value || '0', 10);
+  countdownInitial = Math.max(1000, ((h*3600 + m*60 + s) * 1000));
+  countdownRemainingAtStart = countdownInitial; elapsedBefore = countdownInitial;
+  updateDisplay();
+}
+function setPomodoroPreset(workMin, breakMin) {
+  pomodoroWork = workMin * 60000; pomodoroBreak = breakMin * 60000; pomodoroPhase = 'work';
+  countdownRemainingAtStart = pomodoroWork; elapsedBefore = pomodoroWork; setStatus('Pomodoro preset: ' + workMin + ' / ' + breakMin); updateDisplay();
+}
+function togglePomodoroPhase() {
+  pomodoroPhase = pomodoroPhase === 'work' ? 'break' : 'work';
+  elapsedBefore = pomodoroPhase === 'work' ? pomodoroWork : pomodoroBreak;
+  countdownRemainingAtStart = elapsedBefore;
+  setStatus('Pomodoro ' + pomodoroPhase + ' phase'); updateDisplay();
+}
+function finishCountdown() {
+  pauseTimer(); elapsedBefore = 0; updateDisplay(); beep();
+  setStatus((mode === 'pomodoro' ? 'Pomodoro ' + pomodoroPhase : 'Countdown') + ' complete');
+  if(mode === 'pomodoro') togglePomodoroPhase();
+}
+function beep() {
+  if(document.getElementById('soundToggle').value !== 'true') return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator(); var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination); osc.frequency.value = 880; gain.gain.value = 0.08;
+    osc.start(); setTimeout(function(){ osc.stop(); ctx.close(); }, 400);
+  } catch(e) {}
+}
+function addLap() {
+  var cur = sessionElapsedForStats();
+  var prev = laps.length ? laps[laps.length - 1].elapsedMs : 0;
+  laps.push({ number: laps.length + 1, elapsedMs: cur, deltaMs: cur - prev, timestamp: new Date().toISOString() });
+  refreshLaps(); updateDisplay();
+}
+function refreshLaps() {
+  var body = document.getElementById('lapsBody'); body.innerHTML = '';
+  laps.forEach(function(l){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + l.number + '</td><td>' + format(l.elapsedMs,false) + '</td><td>' + format(l.deltaMs,false) + '</td><td>' + new Date(l.timestamp).toLocaleTimeString() + '</td>';
+    body.appendChild(tr);
+  });
+}
+function clearLaps(){ laps = []; refreshLaps(); }
+function saveSession() {
+  var dur = sessionElapsedForStats();
+  if(dur < 1000) { setStatus('Nothing to save yet'); return; }
+  var sessions = getSessions();
+  sessions.push({
+    start: sessionStartedAt || new Date(Date.now() - dur).toISOString(),
+    end: new Date().toISOString(),
+    durationMs: dur,
+    mode: mode,
+    task: document.getElementById('taskName').value || '',
+    artifact: document.getElementById('artifactRef').value || '',
+    laps: laps.slice(0)
+  });
+  setSessions(sessions); setStatus('Session saved'); resetTimer(); refreshHistory();
+}
+function refreshHistory() {
+  var body = document.getElementById('historyBody'); body.innerHTML = '';
+  getSessions().forEach(function(s){
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + new Date(s.start).toLocaleTimeString() + '</td><td>' + new Date(s.end).toLocaleTimeString() + '</td><td>' + format(s.durationMs,false) + '</td><td>' + escapeHtml(s.task || '') + '</td>';
+    body.appendChild(tr);
+  }); updateDisplay();
+}
+function escapeHtml(str){ return String(str).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function clearToday() { if(confirm('Clear all sessions for today?')) { setSessions([]); refreshHistory(); updateDisplay(); } }
+function buildSummary() {
+  var task = document.getElementById('taskName').value || '(no task)';
+  var artifact = document.getElementById('artifactRef').value || '(no artifact/module)';
+  return 'DOORS Next time summary\nDate: ' + todayKey() + '\nTask: ' + task + '\nArtifact/Module: ' + artifact + '\nCurrent session: ' + format(sessionElapsedForStats(), false) + '\nToday total: ' + format(todayTotal() + (running ? sessionElapsedForStats() : 0), false) + '\nLaps: ' + laps.length;
+}
+function copySummary() {
+  var text = buildSummary();
+  document.getElementById('clipboardBox').value = text;
+  if(navigator.clipboard) navigator.clipboard.writeText(text).catch(function(){});
+  setStatus('Summary copied or placed in text box');
+}
+function exportCsv() {
+  var rows = [['Date','Start','End','Duration','Mode','Task','Artifact']];
+  getSessions().forEach(function(s){ rows.push([todayKey(), s.start, s.end, format(s.durationMs,false), s.mode, s.task || '', s.artifact || '']); });
+  var csv = rows.map(function(r){ return r.map(csvCell).join(','); }).join('\n');
+  downloadText('dng-chronometer-' + todayKey() + '.csv', csv, 'text/csv');
+}
+function csvCell(v) { return '"' + String(v).replace(/"/g,'""') + '"'; }
+function exportJson() {
+  var data = JSON.stringify({ date: todayKey(), sessions: getSessions(), activeSummary: buildSummary() }, null, 2);
+  downloadText('dng-chronometer-' + todayKey() + '.json', data, 'application/json');
+}
+function downloadText(filename, text, type) {
+  document.getElementById('clipboardBox').value = text;
+  try {
+    var blob = new Blob([text], {type: type}); var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(url); document.body.removeChild(a); }, 0);
+    setStatus('Export created: ' + filename);
+  } catch(e) { setStatus('Export placed in text box'); }
+}
+function setAccent(color) { document.documentElement.style.setProperty('--accent', color); }
+function toggleTheme() { document.body.className = document.body.className === 'dark' ? '' : 'dark'; }
+document.addEventListener('keydown', function(e){
+  if(e.target && ['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName) >= 0) return;
+  if(e.code === 'Space') { e.preventDefault(); running ? pauseTimer() : startTimer(); }
+  if(e.key.toLowerCase() === 'l') addLap();
+  if(e.key.toLowerCase() === 'r') resetTimer();
+  if(e.key.toLowerCase() === 's') saveSession();
+});
+setMode(window.__preferredMode || 'stopwatch');
+refreshHistory();
+setInterval(updateDisplay, 1000);
+</script>
+</body>
+</html>
+  ]]></Content>
+</Module>
