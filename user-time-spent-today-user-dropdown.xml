@@ -1,0 +1,515 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  DOORS Next / RM OpenSocial Gadget
+  Suggested file name: user-time-spent-today-user-dropdown.xml
+
+  Purpose:
+  - Adds a user dropdown menu.
+  - Can load users from a JSON file URL or from a manually entered list.
+  - Tracks active time per selected user in this browser using localStorage.
+
+  Important limitation:
+  - A client-side OpenSocial gadget cannot reliably retrieve all DOORS Next users or measure time
+    spent by other users unless a server-side service/API provides that data.
+  - For true all-user reporting, deploy a small backend service that reads JTS/RM logs or audit data
+    and exposes a JSON endpoint consumed by this gadget.
+
+  Optional users.json format:
+  [
+    { "id": "denis", "name": "Denis Belanger" },
+    { "id": "user2", "name": "User Two" }
+  ]
+-->
+<Module>
+  <ModulePrefs
+      title="DOORS Next - User Time Spent Today"
+      description="Tracks or displays time spent today in DOORS Next with a selectable user dropdown."
+      author="Denis Belanger / Microsoft Copilot"
+      height="560"
+      scrolling="true">
+    <Require feature="dynamic-height" />
+    <Require feature="settitle" />
+  </ModulePrefs>
+
+  <Content type="html"><![CDATA[
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 12px;
+    color: #1f2933;
+    background: #ffffff;
+  }
+  .card {
+    border: 1px solid #d9e2ec;
+    border-radius: 8px;
+    padding: 12px;
+    background: #f8fafc;
+  }
+  h2 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    color: #102a43;
+  }
+  h3 {
+    margin: 14px 0 6px 0;
+    font-size: 13px;
+    color: #243b53;
+  }
+  label {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #334e68;
+  }
+  select, input, textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #bcccdc;
+    border-radius: 5px;
+    padding: 6px;
+    font-size: 12px;
+    background: #ffffff;
+    color: #102a43;
+  }
+  textarea {
+    min-height: 58px;
+    resize: vertical;
+  }
+  .metric {
+    font-size: 30px;
+    font-weight: bold;
+    color: #005ea8;
+    margin: 10px 0 4px 0;
+  }
+  .label {
+    font-size: 12px;
+    color: #52616b;
+  }
+  .row {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    border: 1px solid #005ea8;
+    background: #005ea8;
+    color: #ffffff;
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  button.secondary {
+    background: #ffffff;
+    color: #005ea8;
+  }
+  button.warning {
+    background: #bf2600;
+    border-color: #bf2600;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    font-size: 12px;
+  }
+  th, td {
+    border-bottom: 1px solid #d9e2ec;
+    text-align: left;
+    padding: 6px;
+  }
+  th {
+    background: #eef2f7;
+    color: #243b53;
+  }
+  .status-active { color: #00875a; font-weight: bold; }
+  .status-idle { color: #bf2600; font-weight: bold; }
+  .note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #627d98;
+    line-height: 1.35;
+  }
+  .small {
+    font-size: 11px;
+    color: #627d98;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>DOORS Next - User Time Spent Today</h2>
+    <div class="label">Selectable user dropdown, local-day tracking</div>
+
+    <label for="userSelect">User</label>
+    <select id="userSelect" onchange="selectUserFromDropdown()"></select>
+
+    <div id="timeMetric" class="metric">00:00:00</div>
+    <div id="status" class="label">Status: calculating...</div>
+
+    <table>
+      <tbody>
+        <tr><th>Date</th><td id="todayCell"></td></tr>
+        <tr><th>Selected user ID</th><td id="selectedUserIdCell"></td></tr>
+        <tr><th>Selected user name</th><td id="selectedUserNameCell"></td></tr>
+        <tr><th>Session started</th><td id="sessionStartCell"></td></tr>
+        <tr><th>Last activity</th><td id="lastActivityCell"></td></tr>
+        <tr><th>Idle threshold</th><td>2 minutes</td></tr>
+      </tbody>
+    </table>
+
+    <div class="row">
+      <button onclick="resetSelectedUserToday()">Reset selected user today</button>
+      <button class="secondary" onclick="exportCsv()">Export CSV</button>
+      <button class="secondary" onclick="exportJson()">Export JSON</button>
+    </div>
+
+    <h3>User list source</h3>
+    <label for="usersJsonUrl">Users JSON URL</label>
+    <input id="usersJsonUrl" type="text" placeholder="Example: https://denisbelanger101.github.io/DNG-Widgets/users.json" />
+    <div class="row">
+      <button class="secondary" onclick="loadUsersFromUrl()">Load users from URL</button>
+      <button class="secondary" onclick="saveUsersUrl()">Save URL</button>
+    </div>
+
+    <label for="manualUsers">Manual users, one per line: userId | Display Name</label>
+    <textarea id="manualUsers" placeholder="denis | Denis Belanger&#10;jsmith | John Smith"></textarea>
+    <div class="row">
+      <button class="secondary" onclick="loadManualUsers()">Load manual users</button>
+      <button class="secondary" onclick="saveManualUsers()">Save manual list</button>
+      <button class="warning" onclick="clearUserList()">Clear users</button>
+    </div>
+
+    <div class="note">
+      Note: This is a browser-side gadget. The dropdown can list users from a JSON file or manual list.
+      It does not automatically query all JTS/RM users unless your server exposes a supported users endpoint.
+      To measure all users accurately, use a server-side collector that writes a daily JSON file consumed by this widget.
+    </div>
+  </div>
+
+<script type="text/javascript">
+(function () {
+  var IDLE_LIMIT_MS = 2 * 60 * 1000;
+  var TICK_MS = 1000;
+  var startedAt = new Date();
+  var lastActivity = new Date();
+  var lastTick = new Date();
+  var users = [];
+  var selectedUserId = null;
+
+  function yyyyMmDd(d) {
+    var yyyy = d.getFullYear();
+    var mm = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return yyyy + '-' + mm + '-' + dd;
+  }
+
+  function safeId(value) {
+    return String(value || '').trim().replace(/[^a-zA-Z0-9_.@-]/g, '_');
+  }
+
+  function todayKeyPrefix() {
+    return 'dngTimeSpentTodayByUser:' + yyyyMmDd(new Date()) + ':';
+  }
+
+  function storageKeyForUser(userId) {
+    return todayKeyPrefix() + safeId(userId || 'current-user');
+  }
+
+  function readSeconds(userId) {
+    var raw = window.localStorage.getItem(storageKeyForUser(userId));
+    var value = parseInt(raw || '0', 10);
+    return isNaN(value) ? 0 : value;
+  }
+
+  function writeSeconds(userId, seconds) {
+    window.localStorage.setItem(storageKeyForUser(userId), String(Math.max(0, Math.floor(seconds))));
+  }
+
+  function isActiveNow() {
+    var now = new Date();
+    var recentlyActive = (now.getTime() - lastActivity.getTime()) <= IDLE_LIMIT_MS;
+    var visible = document.visibilityState !== 'hidden';
+    return recentlyActive && visible;
+  }
+
+  function formatDuration(totalSeconds) {
+    totalSeconds = Math.max(0, Math.floor(totalSeconds));
+    var h = Math.floor(totalSeconds / 3600);
+    var m = Math.floor((totalSeconds % 3600) / 60);
+    var s = totalSeconds % 60;
+    return String(h).padStart(2, '0') + ':' +
+           String(m).padStart(2, '0') + ':' +
+           String(s).padStart(2, '0');
+  }
+
+  function setText(id, value) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = value; }
+  }
+
+  function currentUser() {
+    if (!selectedUserId && users.length > 0) {
+      selectedUserId = users[0].id;
+    }
+    for (var i = 0; i < users.length; i++) {
+      if (users[i].id === selectedUserId) { return users[i]; }
+    }
+    return { id: selectedUserId || 'current-user', name: selectedUserId || 'Current browser user' };
+  }
+
+  function refreshUserDropdown() {
+    var select = document.getElementById('userSelect');
+    if (!select) { return; }
+    select.innerHTML = '';
+    if (users.length === 0) {
+      users = [{ id: 'current-user', name: 'Current browser user' }];
+    }
+    for (var i = 0; i < users.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = users[i].id;
+      opt.textContent = users[i].name + ' (' + users[i].id + ')';
+      select.appendChild(opt);
+    }
+    if (!selectedUserId) {
+      selectedUserId = users[0].id;
+    }
+    select.value = selectedUserId;
+  }
+
+  function refreshUi() {
+    var user = currentUser();
+    var seconds = readSeconds(user.id);
+    setText('timeMetric', formatDuration(seconds));
+    setText('todayCell', yyyyMmDd(new Date()));
+    setText('selectedUserIdCell', user.id);
+    setText('selectedUserNameCell', user.name);
+    setText('sessionStartCell', startedAt.toLocaleString());
+    setText('lastActivityCell', lastActivity.toLocaleString());
+
+    var active = isActiveNow();
+    var status = document.getElementById('status');
+    if (status) {
+      status.innerHTML = 'Status: <span class="' + (active ? 'status-active' : 'status-idle') + '">' +
+                         (active ? 'Active - counting selected user' : 'Idle/hidden - paused') + '</span>';
+    }
+
+    if (typeof gadgets !== 'undefined' && gadgets.window && gadgets.window.adjustHeight) {
+      gadgets.window.adjustHeight();
+    }
+  }
+
+  function activity() {
+    lastActivity = new Date();
+    refreshUi();
+  }
+
+  function tick() {
+    var now = new Date();
+    var deltaSeconds = Math.round((now.getTime() - lastTick.getTime()) / 1000);
+    lastTick = now;
+
+    if (isActiveNow()) {
+      var user = currentUser();
+      writeSeconds(user.id, readSeconds(user.id) + deltaSeconds);
+    }
+    refreshUi();
+  }
+
+  function normalizeUsers(list) {
+    var normalized = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var id = safeId(item.id || item.userId || item.login || item.name);
+      var name = String(item.name || item.displayName || item.label || id).trim();
+      if (id && !seen[id]) {
+        normalized.push({ id: id, name: name || id });
+        seen[id] = true;
+      }
+    }
+    normalized.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    return normalized;
+  }
+
+  function persistUsers() {
+    window.localStorage.setItem('dngTimeSpentUsers', JSON.stringify(users));
+  }
+
+  function readPersistedUsers() {
+    try {
+      var raw = window.localStorage.getItem('dngTimeSpentUsers');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) { users = normalizeUsers(parsed); }
+      }
+    } catch (e) {}
+  }
+
+  window.selectUserFromDropdown = function () {
+    var select = document.getElementById('userSelect');
+    selectedUserId = select ? select.value : selectedUserId;
+    window.localStorage.setItem('dngTimeSpentSelectedUser', selectedUserId || '');
+    activity();
+  };
+
+  window.resetSelectedUserToday = function () {
+    var user = currentUser();
+    writeSeconds(user.id, 0);
+    activity();
+  };
+
+  window.exportCsv = function () {
+    var date = yyyyMmDd(new Date());
+    var csv = 'date,user_id,user_name,seconds,time_hh_mm_ss,session_started,last_activity\n';
+    for (var i = 0; i < users.length; i++) {
+      var seconds = readSeconds(users[i].id);
+      csv += date + ',' + csvEscape(users[i].id) + ',' + csvEscape(users[i].name) + ',' + seconds + ',' +
+             formatDuration(seconds) + ',' + csvEscape(startedAt.toISOString()) + ',' + csvEscape(lastActivity.toISOString()) + '\n';
+    }
+    downloadFile('doors-next-time-spent-' + date + '.csv', csv, 'text/csv;charset=utf-8;');
+  };
+
+  window.exportJson = function () {
+    var date = yyyyMmDd(new Date());
+    var payload = {
+      date: date,
+      generatedAt: new Date().toISOString(),
+      records: users.map(function (u) {
+        var seconds = readSeconds(u.id);
+        return { userId: u.id, userName: u.name, seconds: seconds, time: formatDuration(seconds) };
+      })
+    };
+    downloadFile('doors-next-time-spent-' + date + '.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8;');
+  };
+
+  function csvEscape(value) {
+    var s = String(value == null ? '' : value);
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+
+  function downloadFile(name, content, type) {
+    var blob = new Blob([content], { type: type });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  window.loadUsersFromUrl = function () {
+    var input = document.getElementById('usersJsonUrl');
+    var url = input ? input.value.trim() : '';
+    if (!url) {
+      alert('Enter a users JSON URL first.');
+      return;
+    }
+    fetch(url, { credentials: 'include' })
+      .then(function (response) {
+        if (!response.ok) { throw new Error('HTTP ' + response.status); }
+        return response.json();
+      })
+      .then(function (data) {
+        var rawUsers = Array.isArray(data) ? data : (data.users || data.members || []);
+        users = normalizeUsers(rawUsers);
+        if (users.length === 0) { throw new Error('No users found in JSON.'); }
+        selectedUserId = users[0].id;
+        persistUsers();
+        refreshUserDropdown();
+        refreshUi();
+      })
+      .catch(function (err) {
+        alert('Unable to load users from URL: ' + err.message);
+      });
+  };
+
+  window.saveUsersUrl = function () {
+    var input = document.getElementById('usersJsonUrl');
+    if (input) {
+      window.localStorage.setItem('dngTimeSpentUsersJsonUrl', input.value.trim());
+      alert('Users JSON URL saved in this browser.');
+    }
+  };
+
+  window.loadManualUsers = function () {
+    var text = document.getElementById('manualUsers').value || '';
+    var list = [];
+    text.split(/\r?\n/).forEach(function (line) {
+      line = line.trim();
+      if (!line) { return; }
+      var parts = line.split('|');
+      var id = parts[0] ? parts[0].trim() : '';
+      var name = parts[1] ? parts.slice(1).join('|').trim() : id;
+      if (id) { list.push({ id: id, name: name }); }
+    });
+    users = normalizeUsers(list);
+    if (users.length === 0) {
+      alert('No valid users found. Use format: userId | Display Name');
+      return;
+    }
+    selectedUserId = users[0].id;
+    persistUsers();
+    refreshUserDropdown();
+    refreshUi();
+  };
+
+  window.saveManualUsers = function () {
+    var text = document.getElementById('manualUsers').value || '';
+    window.localStorage.setItem('dngTimeSpentManualUsers', text);
+    alert('Manual users saved in this browser.');
+  };
+
+  window.clearUserList = function () {
+    users = [{ id: 'current-user', name: 'Current browser user' }];
+    selectedUserId = users[0].id;
+    persistUsers();
+    refreshUserDropdown();
+    refreshUi();
+  };
+
+  function init() {
+    readPersistedUsers();
+    selectedUserId = window.localStorage.getItem('dngTimeSpentSelectedUser') || null;
+
+    var savedUrl = window.localStorage.getItem('dngTimeSpentUsersJsonUrl') || '';
+    var urlInput = document.getElementById('usersJsonUrl');
+    if (urlInput) { urlInput.value = savedUrl; }
+
+    var savedManual = window.localStorage.getItem('dngTimeSpentManualUsers') || '';
+    var manualInput = document.getElementById('manualUsers');
+    if (manualInput) { manualInput.value = savedManual; }
+
+    refreshUserDropdown();
+    activity();
+  }
+
+  ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function (eventName) {
+    document.addEventListener(eventName, activity, true);
+  });
+  document.addEventListener('visibilitychange', function () {
+    lastTick = new Date();
+    activity();
+  });
+
+  if (typeof gadgets !== 'undefined' && gadgets.window && gadgets.window.setTitle) {
+    gadgets.window.setTitle('DOORS Next - User Time Spent Today');
+  }
+
+  init();
+  setInterval(tick, TICK_MS);
+})();
+</script>
+</body>
+</html>
+  ]]></Content>
+</Module>
